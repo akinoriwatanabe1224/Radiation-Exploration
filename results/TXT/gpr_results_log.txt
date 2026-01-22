@@ -1,0 +1,71 @@
+======================================================================
+Multi-Robot GPR Exploration with Unknown Environment - Results Log
+======================================================================
+
+Number of Robots: 2
+Grid Size: 50 x 50
+LiDAR Sensor Range: 5 cells
+Search Radius: 1 (measurement area: 3x3)
+Max GPR Iterations: 8
+
+----------------------------------------------------------------------
+ROBOT TRAVEL DISTANCES
+----------------------------------------------------------------------
+Robot 0: 271.00 cells
+Robot 1: 218.00 cells
+
+Total distance (all robots): 489.00 cells
+
+----------------------------------------------------------------------
+TRUE SOURCE POSITIONS
+----------------------------------------------------------------------
+Source 1:
+  Grid: (17, 37)
+  World: (-3.06, 5.10)
+
+Source 2:
+  Grid: (32, 37)
+  World: (3.06, 5.10)
+
+----------------------------------------------------------------------
+GPR DETECTED PEAKS
+----------------------------------------------------------------------
+Total peaks detected: 6
+
+Peak 1 (Obs 3, Robot 0):
+  Grid: (16.818, 36.364)
+  World: (-3.135, 4.842)
+
+Peak 2 (Obs 4, Robot 1):
+  Grid: (32.879, 36.455)
+  World: (3.420, 4.879)
+
+Peak 3 (Obs 5, Robot 1):
+  Grid: (25.394, 44.404)
+  World: (0.365, 8.124)
+
+Peak 4 (Obs 2, Robot 0):
+  Grid: (16.909, 36.717)
+  World: (-3.098, 4.987)
+
+Peak 5 (Obs 0, Robot 1):
+  Grid: (16.818, 37.131)
+  World: (-3.135, 5.156)
+
+Peak 6 (Obs 1, Robot 0):
+  Grid: (32.182, 37.121)
+  World: (3.135, 5.152)
+
+----------------------------------------------------------------------
+COMPARISON WITH TRUE SOURCES
+----------------------------------------------------------------------
+True Source 1 at (17, 37) [grid], (-3.06, 5.10) [world]:
+  Closest peak: (16.818, 37.131) [grid], (-3.135, 5.156) [world]
+  Distance: 0.224 (grid)
+  Detected by: Robot 1, Obs 0
+
+True Source 2 at (32, 37) [grid], (3.06, 5.10) [world]:
+  Closest peak: (32.182, 37.121) [grid], (3.135, 5.152) [world]
+  Distance: 0.219 (grid)
+  Detected by: Robot 0, Obs 1
+

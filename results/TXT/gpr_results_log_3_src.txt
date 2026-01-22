@@ -1,0 +1,95 @@
+======================================================================
+Multi-Robot GPR Exploration with Unknown Environment - Results Log
+======================================================================
+
+Experiment Version: 3_src
+Number of Robots: 2
+Grid Size: 50 x 50
+LiDAR Sensor Range: 5 cells
+Search Radius: 1 (measurement area: 3x3)
+Max GPR Iterations: 8
+GPR Step Limit: Enabled
+Max GPR Steps: 30
+
+----------------------------------------------------------------------
+ROBOT TRAVEL DISTANCES
+----------------------------------------------------------------------
+Robot 0: 290.00 cells
+Robot 1: 173.00 cells
+
+Total distance (all robots): 463.00 cells
+
+----------------------------------------------------------------------
+TRUE SOURCE POSITIONS
+----------------------------------------------------------------------
+Source 1:
+  Grid: (17, 10)
+  World: (17.00, 10.00)
+
+Source 2:
+  Grid: (32, 37)
+  World: (32.00, 37.00)
+
+Source 3:
+  Grid: (40, 37)
+  World: (40.00, 37.00)
+
+----------------------------------------------------------------------
+GPR DETECTED PEAKS
+----------------------------------------------------------------------
+Total peaks detected: 9
+
+Peak 1 (Obs 0, Robot 1):
+  Grid: (17.030, 9.970)
+  World: (17.030, 9.970)
+
+Peak 2 (Obs 7, Robot 0):
+  Grid: (32.061, 37.030)
+  World: (32.061, 37.030)
+
+Peak 3 (Obs 1, Robot 1):
+  Grid: (17.879, 10.000)
+  World: (17.879, 10.000)
+
+Peak 4 (Obs 8, Robot 0):
+  Grid: (40.061, 36.909)
+  World: (40.061, 36.909)
+
+Peak 5 (Obs 3, Robot 1):
+  Grid: (26.606, 11.061)
+  World: (26.606, 11.061)
+
+Peak 6 (Obs 6, Robot 0):
+  Grid: (39.788, 37.182)
+  World: (39.788, 37.182)
+
+Peak 7 (Obs 2, Robot 1):
+  Grid: (17.121, 9.545)
+  World: (17.121, 9.545)
+
+Peak 8 (Obs 5, Robot 0):
+  Grid: (33.061, 17.303)
+  World: (33.061, 17.303)
+
+Peak 9 (Obs 4, Robot 0):
+  Grid: (16.182, 8.727)
+  World: (16.182, 8.727)
+
+----------------------------------------------------------------------
+COMPARISON WITH TRUE SOURCES
+----------------------------------------------------------------------
+True Source 1 at (17, 10) [grid], (17.00, 10.00) [world]:
+  Closest peak: (17.030, 9.970) [grid], (17.030, 9.970) [world]
+  Distance: 0.043 (grid)
+  Detected by: Robot 1, Obs 0
+
+True Source 2 at (32, 37) [grid], (32.00, 37.00) [world]:
+  Closest peak: (32.061, 37.030) [grid], (32.061, 37.030) [world]
+  Distance: 0.068 (grid)
+  Detected by: Robot 0, Obs 7
+
+True Source 3 at (40, 37) [grid], (40.00, 37.00) [world]:
+  Closest peak: (40.061, 36.909) [grid], (40.061, 36.909) [world]
+  Distance: 0.109 (grid)
+  Detected by: Robot 0, Obs 8
+
