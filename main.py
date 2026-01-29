@@ -14,7 +14,7 @@ from config import (
     angle_noise_std_deg, num_rays_per_pair, num_env_rays_per_msr, num_bins, kappa,
     peak_local_size, peak_threshold_ratio,
     NUM_ROBOTS, rho, alpha, beta, gamma, ROBOT_START_POSITIONS,
-    GRID_SIZE, SENSOR_RANGE,
+    GRID_SIZE, SENSOR_RANGE, UNKNOWN_PENALTY, MAX_REPLAN_COUNT,
     SEARCH_RADIUS, MAX_GPR_ITERS, PREDICT_SCALE, PREDICT_MARGIN_CELLS,
     USE_GPR_STEP_LIMIT, MAX_GPR_STEPS,
     GIF_DISPLAY_X_MIN, GIF_DISPLAY_X_MAX, GIF_DISPLAY_Y_MIN, GIF_DISPLAY_Y_MAX,
@@ -31,6 +31,8 @@ from obstacles.rectangle import RectangleObstacle
 from visualization.gif_generator import (
     save_direction_viz, save_heatmap_viz, save_heatmap_only_viz,
     save_heatmap_with_obstacles_viz, save_intensity_map_viz,
+    save_final_summary_viz, save_final_summary_with_markers_viz,
+    save_final_summary_with_trajectories_viz,
     create_integrated_gif_with_unknown_env
 )
 
@@ -212,7 +214,7 @@ def main():
     print("Generating integrated Exploration GIF with unknown environment...")
     print("=" * 60)
 
-    integrated_frames, integrated_gpr_peaks, robot_distances, task_assignment_log = create_integrated_gif_with_unknown_env(
+    integrated_frames, integrated_gpr_peaks, robot_distances, task_assignment_log, extra_data = create_integrated_gif_with_unknown_env(
         robot_start_grid, peaks_xy, peaks_val,
         true_grid, sim_observed_counts, sources_grid,
         obstacle_rects, SENSOR_RANGE, GRID_SIZE,
@@ -225,8 +227,43 @@ def main():
         max_gpr_steps=MAX_GPR_STEPS,
         rho=rho, alpha=alpha, beta=beta, gamma=gamma,
         display_x_min=GIF_DISPLAY_X_MIN, display_x_max=GIF_DISPLAY_X_MAX,
-        display_y_min=GIF_DISPLAY_Y_MIN, display_y_max=GIF_DISPLAY_Y_MAX
+        display_y_min=GIF_DISPLAY_Y_MIN, display_y_max=GIF_DISPLAY_Y_MAX,
+        unknown_penalty=UNKNOWN_PENALTY,
+        max_replan_count=MAX_REPLAN_COUNT,
+        source_intensities=sources_intensity_list
     )
+
+    # 最終結果のサマリー図を保存
+    save_final_summary_viz(
+        integrated_gpr_peaks, sources_grid, obstacle_rects,
+        extra_data['unreachable_tasks'], extra_data['obstacle_tasks'],
+        extra_data['task_positions_grid'],
+        x_min, x_max, y_min, y_max, GRID_SIZE,
+        os.path.join(PNG_DIR, f"final_summary_{EXPERIMENT_VERSION}.png")
+    )
+    print(f"Saved final summary figure to {PNG_DIR}")
+
+    # 最終結果のサマリー図（測定位置・ロボットスタート位置付き、タグなし）を保存
+    save_final_summary_with_markers_viz(
+        integrated_gpr_peaks, sources_grid, obstacle_rects,
+        extra_data['unreachable_tasks'], extra_data['obstacle_tasks'],
+        extra_data['task_positions_grid'],
+        measurements, robot_start_world,
+        x_min, x_max, y_min, y_max, GRID_SIZE,
+        os.path.join(PNG_DIR, f"final_summary_with_markers_{EXPERIMENT_VERSION}.png")
+    )
+    print(f"Saved final summary with markers figure to {PNG_DIR}")
+
+    # 最終結果のサマリー図（軌跡付き）を保存
+    save_final_summary_with_trajectories_viz(
+        integrated_gpr_peaks, sources_grid, obstacle_rects,
+        extra_data['unreachable_tasks'], extra_data['obstacle_tasks'],
+        extra_data['task_positions_grid'],
+        measurements, robot_start_world, extra_data['robot_trajectories'],
+        x_min, x_max, y_min, y_max, GRID_SIZE,
+        os.path.join(PNG_DIR, f"final_summary_with_trajectories_{EXPERIMENT_VERSION}.png")
+    )
+    print(f"Saved final summary with trajectories figure to {PNG_DIR}")
 
     if len(integrated_frames) > 0:
         integrated_gif_path = os.path.join(GIF_DIR, f"integrated_Exploration_{EXPERIMENT_VERSION}.gif")

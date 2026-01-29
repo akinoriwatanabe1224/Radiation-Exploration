@@ -6,7 +6,7 @@ import heapq
 class DStarLite:
     """D* Lite 経路計画アルゴリズム"""
 
-    def __init__(self, grid, start, goal):
+    def __init__(self, grid, start, goal, discovered_grid=None, unknown_penalty=1.0):
         """
         Parameters
         ----------
@@ -16,10 +16,16 @@ class DStarLite:
             開始位置 (x, y)
         goal : tuple
             目標位置 (x, y)
+        discovered_grid : ndarray, optional
+            探索済みグリッド（True: 既知、False: 未知）
+        unknown_penalty : float, optional
+            未知領域を通過する際のコストペナルティ係数（デフォルト: 1.0）
         """
         self.grid = grid
         self.start = start
         self.goal = goal
+        self.discovered_grid = discovered_grid
+        self.unknown_penalty = unknown_penalty
         self.g = {}
         self.rhs = {}
         self.U = []
@@ -49,6 +55,27 @@ class DStarLite:
             マンハッタン距離
         """
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    def edge_cost(self, to_cell):
+        """
+        セルへの移動コストを計算する
+
+        Parameters
+        ----------
+        to_cell : tuple
+            移動先セルの座標 (x, y)
+
+        Returns
+        -------
+        float
+            移動コスト（未知領域の場合はペナルティを適用）
+        """
+        x, y = to_cell
+        # discovered_gridがない場合、または既知セルの場合はコスト1
+        if self.discovered_grid is None or self.discovered_grid[y, x]:
+            return 1.0
+        # 未知セルの場合はペナルティを適用
+        return self.unknown_penalty
 
     def calculate_key(self, s):
         """
@@ -104,7 +131,7 @@ class DStarLite:
         """
         if u != self.goal:
             nbrs = self.get_neighbors(u)
-            self.rhs[u] = min([self.g[s] + 1 for s in nbrs] or [float("inf")])
+            self.rhs[u] = min([self.g[s] + self.edge_cost(u) for s in nbrs] or [float("inf")])
         if any(v == u for _, v in self.U):
             self.U = [(k, v) for k, v in self.U if v != u]
             heapq.heapify(self.U)
@@ -145,7 +172,8 @@ class DStarLite:
             neighbors = self.get_neighbors(s)
             if not neighbors:
                 return None
-            next_s = min(neighbors, key=lambda x: self.g.get(x, float("inf")))
+            # 隣接セルへの移動コストを考慮して次のセルを選択
+            next_s = min(neighbors, key=lambda x: self.g.get(x, float("inf")) + self.edge_cost(x))
             if self.g.get(next_s, float("inf")) == float("inf"):
                 return None
             s = next_s

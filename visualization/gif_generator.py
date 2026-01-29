@@ -10,6 +10,7 @@ from matplotlib.lines import Line2D
 from path_planning.dstar_lite import DStarLite
 from sensors.lidar import reveal_with_lidar
 from radiation.gpr import fit_gpr
+from radiation.simulation import calculate_intensity_at_point
 from task_allocation.auction import run_dynamic_auction
 from utils.coordinate import world_to_grid, grid_to_world
 
@@ -33,7 +34,7 @@ def save_direction_viz(sources, measurements, ray_data, x_min, x_max, y_min, y_m
     """
     plt.figure(figsize=(6, 6))
     plt.scatter(sources[:, 0], sources[:, 1], c='k', marker='x', label='true sources')
-    plt.scatter(measurements[:, 0], measurements[:, 1], c='r', marker='x', label='measure points')
+    plt.scatter(measurements[:, 0], measurements[:, 1], c='r', marker='x', label='Measurement Point')
     plt.xlim(x_min, x_max)
     plt.ylim(y_min, y_max)
     plt.grid(True)
@@ -41,8 +42,8 @@ def save_direction_viz(sources, measurements, ray_data, x_min, x_max, y_min, y_m
     for msr, end, color, alpha in ray_data:
         plt.plot([msr[0], end[0]], [msr[1], end[1]], '-', color=color, alpha=alpha)
 
-    plt.xlabel('x [m]')
-    plt.ylabel('y [m]')
+    plt.xlabel('x [m]', fontsize=15)
+    plt.ylabel('y [m]', fontsize=15)
     plt.legend()
     plt.savefig(output_path)
     plt.close()
@@ -79,8 +80,8 @@ def save_heatmap_viz(heatmap, Xc, Yc, peaks_xy, sources, measurements,
     plt.colorbar()
     plt.xlim(x_min, x_max)
     plt.ylim(y_min, y_max)
-    plt.xlabel('x [m]')
-    plt.ylabel('y [m]')
+    plt.xlabel('x [m]', fontsize=15)
+    plt.ylabel('y [m]', fontsize=15)
     plt.legend()
     plt.savefig(output_path)
     plt.close()
@@ -110,8 +111,8 @@ def save_heatmap_only_viz(heatmap, Xc, Yc, x_min, x_max, y_min, y_max, output_pa
     # ax.set_title("von Mises heatmap")
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
     ax.set_aspect('equal')
 
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -165,8 +166,8 @@ def save_heatmap_with_obstacles_viz(heatmap, Xc, Yc, peaks_xy, sources, measurem
     # ax.set_title("von Mises heatmap + obstacles")
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
     ax.set_aspect('equal')
     ax.legend(loc='upper right')
 
@@ -229,14 +230,586 @@ def save_intensity_map_viz(intensity_field, sources_grid, obstacle_rects,
 
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
     # ax.set_title(title)
     ax.legend(loc='upper right')
     ax.set_aspect('equal')
 
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
+
+
+def save_final_summary_viz(completed_gpr_peaks, sources_grid, obstacle_rects,
+                            unreachable_tasks, obstacle_tasks, task_positions_grid,
+                            x_min, x_max, y_min, y_max, grid_size, output_path):
+    """
+    最終結果のサマリー図を保存する
+    - 真の線源（最下層）
+    - GPRピーク（中間層）
+    - ゴースト（黒×）
+    - 到達不能タスク（赤×）
+    - 障害物
+
+    Parameters
+    ----------
+    completed_gpr_peaks : list
+        完了したGPRピークのリスト
+    sources_grid : list
+        真の線源位置のリスト
+    obstacle_rects : list
+        障害物のリスト
+    unreachable_tasks : set
+        到達不能タスクのセット
+    obstacle_tasks : set
+        障害物内タスクのセット
+    task_positions_grid : list
+        タスク位置のリスト
+    x_min, x_max, y_min, y_max : float
+        座標範囲
+    grid_size : int
+        グリッドサイズ
+    output_path : str
+        出力パス
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_aspect('equal')
+
+    # 背景（白）
+    ax.set_facecolor('white')
+
+    # グリッド線（zorder=1）
+    grid_interval = 1
+    label_interval = 5
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.grid(which="minor", color="lightgray", linewidth=0.5, zorder=1)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.grid(which="major", color="gray", linewidth=1.0, zorder=1)
+
+    # 障害物を描画（zorder=5、境界線なし）
+    for rect in obstacle_rects:
+        ax.fill(
+            [rect.x0, rect.x1, rect.x1, rect.x0],
+            [rect.y0, rect.y0, rect.y1, rect.y1],
+            color=rect.color, alpha=0.8, zorder=5,
+            edgecolor='none'  # 境界線なし
+        )
+
+    # 真の線源（zorder=10: 最下層）
+    if sources_grid:
+        sx = [p[0] for p in sources_grid]
+        sy = [p[1] for p in sources_grid]
+        ax.scatter(sx, sy, marker='*', s=400, color='cyan',
+                   edgecolors='k', linewidths=2, zorder=10, label='True Sources')
+        for i, (sx_i, sy_i) in enumerate(sources_grid):
+            ax.text(sx_i + 1.0, sy_i - 1.5, f'Source{i + 1}', fontsize=10, ha='left',
+                    fontweight='bold', color='k', zorder=25,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='cyan',
+                              edgecolor='k', linewidth=1.5, alpha=0.9))
+
+    # GPRピーク（TRUE SOURCEのみ、zorder=15: 中間層）
+    true_peaks_plotted = []
+    ghost_peaks_plotted = []
+    for peak_data in completed_gpr_peaks:
+        peak_x, peak_y, robot_id, obs_id, is_ghost = peak_data[:5]
+        if is_ghost:
+            # ゴースト情報を保存
+            orig_x, orig_y = peak_data[5], peak_data[6]
+            ghost_peaks_plotted.append((orig_x, orig_y, obs_id))
+        else:
+            true_peaks_plotted.append((peak_x, peak_y, robot_id, obs_id))
+
+    # GPRピーク（TRUE SOURCE）を描画（マーカーを少し小さく）
+    if true_peaks_plotted:
+        for peak_x, peak_y, robot_id, obs_id in true_peaks_plotted:
+            ax.scatter(peak_x, peak_y, marker='P', s=180,
+                       color='magenta', edgecolors='white', linewidths=2,
+                       zorder=15)
+            ax.text(peak_x + 1.0, peak_y + 1.0, f'Task{obs_id + 1}\n(Est. GPR)', fontsize=10,
+                    fontweight='bold', zorder=25,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                              edgecolor='magenta', linewidth=2, alpha=0.9))
+
+    # ゴースト（黒×、zorder=20）
+    if ghost_peaks_plotted:
+        for orig_x, orig_y, obs_id in ghost_peaks_plotted:
+            ax.scatter(orig_x, orig_y, marker='X', s=300,
+                       color='black', edgecolors='white', linewidths=2,
+                       zorder=20)
+            ax.text(orig_x + 1.0, orig_y + 1.0, f'Task{obs_id + 1}\n(Ghost)', fontsize=10,
+                    fontweight='bold', zorder=25,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgray',
+                              edgecolor='black', linewidth=2, alpha=0.9))
+
+    # 到達不能タスク（赤×、zorder=20）
+    for task_id in unreachable_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='red', edgecolors='white', linewidths=2,
+                   zorder=20)
+        ax.text(gx_disp + 1.0, gy_disp + 1.0, f'Task{task_id + 1}\n(Unreachable)', fontsize=10,
+                fontweight='bold', zorder=25,
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='mistyrose',
+                          edgecolor='red', linewidth=2, alpha=0.9))
+
+    # 障害物内タスク（オレンジ×、zorder=20）
+    for task_id in obstacle_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='darkorange', edgecolors='white', linewidths=2,
+                   zorder=20)
+        ax.text(gx_disp + 1.0, gy_disp + 1.0, f'Task{task_id + 1}\n(Obstacle)', fontsize=10,
+                fontweight='bold', zorder=25,
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='navajowhite',
+                          edgecolor='darkorange', linewidth=2, alpha=0.9))
+
+    ax.set_xlim(x_min - 0.5, x_max + 0.5)
+    ax.set_ylim(y_min - 0.5, y_max + 0.5)
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
+    ax.set_aspect('equal')
+
+    # 凡例を作成
+    legend_elements = [
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='cyan',
+               markersize=15, label='True Source', markeredgecolor='k'),
+        Line2D([0], [0], marker='P', color='w', markerfacecolor='magenta',
+               markersize=12, label='Est. Pos. (GPR)', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='black',
+               markersize=12, label='Ghost', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='red',
+               markersize=12, label='Unreachable', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='darkorange',
+               markersize=12, label='On Obstacle', markeredgecolor='white'),
+        Line2D([0], [0], marker='s', color='w', markerfacecolor='gray',
+               markersize=10, label='Obstacle', markeredgecolor='k'),
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', fontsize=10)
+
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def save_final_summary_with_markers_viz(completed_gpr_peaks, sources_grid, obstacle_rects,
+                                         unreachable_tasks, obstacle_tasks, task_positions_grid,
+                                         measurements, robot_start_positions,
+                                         x_min, x_max, y_min, y_max, grid_size, output_path):
+    """
+    最終結果のサマリー図を保存する（測定位置・ロボットスタート位置付き、タグなし）
+    - 真の線源（最下層）
+    - GPRピーク（中間層）
+    - ゴースト（黒×）
+    - 到達不能タスク（赤×）
+    - 障害物
+    - 測定位置（青×）
+    - ロボットスタート位置（緑×）
+
+    Parameters
+    ----------
+    completed_gpr_peaks : list
+        完了したGPRピークのリスト
+    sources_grid : list
+        真の線源位置のリスト
+    obstacle_rects : list
+        障害物のリスト
+    unreachable_tasks : set
+        到達不能タスクのセット
+    obstacle_tasks : set
+        障害物内タスクのセット
+    task_positions_grid : list
+        タスク位置のリスト
+    measurements : ndarray
+        測定点位置（ワールド座標）
+    robot_start_positions : list
+        ロボット初期位置のリスト（ワールド座標）
+    x_min, x_max, y_min, y_max : float
+        座標範囲
+    grid_size : int
+        グリッドサイズ
+    output_path : str
+        出力パス
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_aspect('equal')
+
+    # 背景（白）
+    ax.set_facecolor('white')
+
+    # グリッド線（zorder=1）
+    grid_interval = 1
+    label_interval = 5
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.grid(which="minor", color="lightgray", linewidth=0.5, zorder=1)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.grid(which="major", color="gray", linewidth=1.0, zorder=1)
+
+    # 障害物を描画（zorder=5、境界線なし）
+    for rect in obstacle_rects:
+        ax.fill(
+            [rect.x0, rect.x1, rect.x1, rect.x0],
+            [rect.y0, rect.y0, rect.y1, rect.y1],
+            color=rect.color, alpha=0.8, zorder=5,
+            edgecolor='none'  # 境界線なし
+        )
+
+    # 全マーカー位置を収集（凡例配置用）
+    all_marker_positions = []
+
+    # 真の線源（zorder=10: 最下層）- タグなし
+    if sources_grid:
+        sx = [p[0] for p in sources_grid]
+        sy = [p[1] for p in sources_grid]
+        ax.scatter(sx, sy, marker='*', s=400, color='cyan',
+                   edgecolors='k', linewidths=2, zorder=10)
+        for sx_i, sy_i in sources_grid:
+            all_marker_positions.append((sx_i, sy_i))
+
+    # GPRピーク（TRUE SOURCEのみ、zorder=15: 中間層）- タグなし
+    true_peaks_plotted = []
+    ghost_peaks_plotted = []
+    for peak_data in completed_gpr_peaks:
+        peak_x, peak_y, robot_id, obs_id, is_ghost = peak_data[:5]
+        if is_ghost:
+            orig_x, orig_y = peak_data[5], peak_data[6]
+            ghost_peaks_plotted.append((orig_x, orig_y, obs_id))
+        else:
+            true_peaks_plotted.append((peak_x, peak_y, robot_id, obs_id))
+
+    # GPRピーク（TRUE SOURCE）を描画
+    if true_peaks_plotted:
+        for peak_x, peak_y, robot_id, obs_id in true_peaks_plotted:
+            ax.scatter(peak_x, peak_y, marker='P', s=180,
+                       color='magenta', edgecolors='white', linewidths=2,
+                       zorder=15)
+            all_marker_positions.append((peak_x, peak_y))
+
+    # ゴースト（黒×、zorder=20）- タグなし
+    if ghost_peaks_plotted:
+        for orig_x, orig_y, obs_id in ghost_peaks_plotted:
+            ax.scatter(orig_x, orig_y, marker='X', s=300,
+                       color='black', edgecolors='white', linewidths=2,
+                       zorder=20)
+            all_marker_positions.append((orig_x, orig_y))
+
+    # 到達不能タスク（赤×、zorder=20）- タグなし
+    for task_id in unreachable_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='red', edgecolors='white', linewidths=2,
+                   zorder=20)
+        all_marker_positions.append((gx_disp, gy_disp))
+
+    # 障害物内タスク（オレンジ×、zorder=20）- タグなし
+    for task_id in obstacle_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='darkorange', edgecolors='white', linewidths=2,
+                   zorder=20)
+        all_marker_positions.append((gx_disp, gy_disp))
+
+    # 測定位置（青×、zorder=12）
+    if measurements is not None and len(measurements) > 0:
+        ax.scatter(measurements[:, 0], measurements[:, 1], marker='X', s=200,
+                   color='blue', edgecolors='white', linewidths=2, zorder=12)
+        for mx, my in measurements:
+            all_marker_positions.append((mx, my))
+
+    # ロボットスタート位置（緑×、zorder=12）
+    if robot_start_positions is not None and len(robot_start_positions) > 0:
+        for pos in robot_start_positions:
+            ax.scatter(pos[0], pos[1], marker='X', s=200,
+                       color='green', edgecolors='white', linewidths=2, zorder=12)
+            all_marker_positions.append((pos[0], pos[1]))
+
+    ax.set_xlim(x_min - 0.5, x_max + 0.5)
+    ax.set_ylim(y_min - 0.5, y_max + 0.5)
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
+    ax.set_aspect('equal')
+
+    # 凡例を作成（2列、大きい文字）
+    legend_elements = [
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='cyan',
+               markersize=18, label='True Source', markeredgecolor='k'),
+        Line2D([0], [0], marker='P', color='w', markerfacecolor='magenta',
+               markersize=14, label='Est. Pos. (GPR)', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='black',
+               markersize=14, label='Ghost', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='red',
+               markersize=14, label='Unreachable', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='darkorange',
+               markersize=14, label='On Obstacle', markeredgecolor='white'),
+        Line2D([0], [0], marker='s', color='w', markerfacecolor='gray',
+               markersize=12, label='Obstacle', markeredgecolor='k'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='blue',
+               markersize=14, label='Measurement Point', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='green',
+               markersize=14, label='Robot Start', markeredgecolor='white'),
+    ]
+
+    # 動的な凡例位置を決定（マーカーを避ける）
+    best_loc = _find_best_legend_location(all_marker_positions, obstacle_rects,
+                                           x_min, x_max, y_min, y_max)
+
+    ax.legend(handles=legend_elements, loc=best_loc, fontsize=15, ncol=2,
+              framealpha=0.9, edgecolor='black')
+
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def save_final_summary_with_trajectories_viz(completed_gpr_peaks, sources_grid, obstacle_rects,
+                                              unreachable_tasks, obstacle_tasks, task_positions_grid,
+                                              measurements, robot_start_positions, robot_trajectories,
+                                              x_min, x_max, y_min, y_max, grid_size, output_path):
+    """
+    最終結果のサマリー図を保存する（測定位置・ロボットスタート位置・軌跡付き、タグなし）
+    - 各ロボットの軌跡（最下層、マーカーより下）
+    - 真の線源
+    - GPRピーク
+    - ゴースト（黒×）
+    - 到達不能タスク（赤×）
+    - 障害物
+    - 測定位置（青×）
+    - ロボットスタート位置（緑×）
+
+    Parameters
+    ----------
+    completed_gpr_peaks : list
+        完了したGPRピークのリスト
+    sources_grid : list
+        真の線源位置のリスト
+    obstacle_rects : list
+        障害物のリスト
+    unreachable_tasks : set
+        到達不能タスクのセット
+    obstacle_tasks : set
+        障害物内タスクのセット
+    task_positions_grid : list
+        タスク位置のリスト
+    measurements : ndarray
+        測定点位置（ワールド座標）
+    robot_start_positions : list
+        ロボット初期位置のリスト（ワールド座標）
+    robot_trajectories : dict
+        各ロボットの軌跡 {robot_id: [(x, y), ...]}
+    x_min, x_max, y_min, y_max : float
+        座標範囲
+    grid_size : int
+        グリッドサイズ
+    output_path : str
+        出力パス
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_aspect('equal')
+
+    # 背景（白）
+    ax.set_facecolor('white')
+
+    # グリッド線（zorder=1）
+    grid_interval = 1
+    label_interval = 5
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(grid_interval))
+    ax.grid(which="minor", color="lightgray", linewidth=0.5, zorder=1)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(label_interval))
+    ax.grid(which="major", color="gray", linewidth=1.0, zorder=1)
+
+    # 各ロボットの軌跡を描画（zorder=3: マーカーより下）
+    robot_colors = {}
+    for robot_id, trajectory in robot_trajectories.items():
+        color = f'C{robot_id}'
+        robot_colors[robot_id] = color
+        if len(trajectory) > 1:
+            # セル中央に描画（+0.5オフセット）
+            xs = [p[0] + 0.5 for p in trajectory]
+            ys = [p[1] + 0.5 for p in trajectory]
+            ax.plot(xs, ys, '-', color=color, alpha=0.7, linewidth=2.5, zorder=3,
+                    label=f'Robot {robot_id} trajectory')
+
+    # 障害物を描画（zorder=5、境界線なし）
+    for rect in obstacle_rects:
+        ax.fill(
+            [rect.x0, rect.x1, rect.x1, rect.x0],
+            [rect.y0, rect.y0, rect.y1, rect.y1],
+            color=rect.color, alpha=0.8, zorder=5,
+            edgecolor='none'  # 境界線なし
+        )
+
+    # 全マーカー位置を収集（凡例配置用）
+    all_marker_positions = []
+
+    # 真の線源（zorder=10: 最下層）- タグなし
+    if sources_grid:
+        sx = [p[0] for p in sources_grid]
+        sy = [p[1] for p in sources_grid]
+        ax.scatter(sx, sy, marker='*', s=400, color='cyan',
+                   edgecolors='k', linewidths=2, zorder=10)
+        for sx_i, sy_i in sources_grid:
+            all_marker_positions.append((sx_i, sy_i))
+
+    # GPRピーク（TRUE SOURCEのみ、zorder=15: 中間層）- タグなし
+    true_peaks_plotted = []
+    ghost_peaks_plotted = []
+    for peak_data in completed_gpr_peaks:
+        peak_x, peak_y, robot_id, obs_id, is_ghost = peak_data[:5]
+        if is_ghost:
+            orig_x, orig_y = peak_data[5], peak_data[6]
+            ghost_peaks_plotted.append((orig_x, orig_y, obs_id))
+        else:
+            true_peaks_plotted.append((peak_x, peak_y, robot_id, obs_id))
+
+    # GPRピーク（TRUE SOURCE）を描画
+    if true_peaks_plotted:
+        for peak_x, peak_y, robot_id, obs_id in true_peaks_plotted:
+            ax.scatter(peak_x, peak_y, marker='P', s=180,
+                       color='magenta', edgecolors='white', linewidths=2,
+                       zorder=15)
+            all_marker_positions.append((peak_x, peak_y))
+
+    # ゴースト（黒×、zorder=20）- タグなし
+    if ghost_peaks_plotted:
+        for orig_x, orig_y, obs_id in ghost_peaks_plotted:
+            ax.scatter(orig_x, orig_y, marker='X', s=300,
+                       color='black', edgecolors='white', linewidths=2,
+                       zorder=20)
+            all_marker_positions.append((orig_x, orig_y))
+
+    # 到達不能タスク（赤×、zorder=20）- タグなし
+    for task_id in unreachable_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='red', edgecolors='white', linewidths=2,
+                   zorder=20)
+        all_marker_positions.append((gx_disp, gy_disp))
+
+    # 障害物内タスク（オレンジ×、zorder=20）- タグなし
+    for task_id in obstacle_tasks:
+        gx, gy = task_positions_grid[task_id]
+        gx_disp, gy_disp = gx + 0.5, gy + 0.5
+        ax.scatter(gx_disp, gy_disp, marker='X', s=300,
+                   color='darkorange', edgecolors='white', linewidths=2,
+                   zorder=20)
+        all_marker_positions.append((gx_disp, gy_disp))
+
+    # 測定位置（青×、zorder=12）
+    if measurements is not None and len(measurements) > 0:
+        ax.scatter(measurements[:, 0], measurements[:, 1], marker='X', s=200,
+                   color='blue', edgecolors='white', linewidths=2, zorder=12)
+        for mx, my in measurements:
+            all_marker_positions.append((mx, my))
+
+    # ロボットスタート位置（緑×、zorder=12）
+    if robot_start_positions is not None and len(robot_start_positions) > 0:
+        for pos in robot_start_positions:
+            ax.scatter(pos[0], pos[1], marker='X', s=200,
+                       color='green', edgecolors='white', linewidths=2, zorder=12)
+            all_marker_positions.append((pos[0], pos[1]))
+
+    ax.set_xlim(x_min - 0.5, x_max + 0.5)
+    ax.set_ylim(y_min - 0.5, y_max + 0.5)
+    ax.set_xlabel('x [m]', fontsize=15)
+    ax.set_ylabel('y [m]', fontsize=15)
+    ax.set_aspect('equal')
+
+    # 凡例を作成（2列、大きい文字）
+    legend_elements = [
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='cyan',
+               markersize=18, label='True Source', markeredgecolor='k'),
+        Line2D([0], [0], marker='P', color='w', markerfacecolor='magenta',
+               markersize=14, label='Est. Pos. (GPR)', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='black',
+               markersize=14, label='Ghost', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='red',
+               markersize=14, label='Unreachable', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='darkorange',
+               markersize=14, label='On Obstacle', markeredgecolor='white'),
+        Line2D([0], [0], marker='s', color='w', markerfacecolor='gray',
+               markersize=12, label='Obstacle', markeredgecolor='k'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='blue',
+               markersize=14, label='Measurement Point', markeredgecolor='white'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='green',
+               markersize=14, label='Robot Start', markeredgecolor='white'),
+    ]
+    # 各ロボットの軌跡を凡例に追加
+    for robot_id in sorted(robot_trajectories.keys()):
+        color = robot_colors.get(robot_id, f'C{robot_id}')
+        legend_elements.append(
+            Line2D([0], [0], color=color, linewidth=2.5, alpha=0.7,
+                   label=f'Robot {robot_id} Path')
+        )
+
+    # 動的な凡例位置を決定（マーカーを避ける）
+    best_loc = _find_best_legend_location(all_marker_positions, obstacle_rects,
+                                           x_min, x_max, y_min, y_max)
+
+    ax.legend(handles=legend_elements, loc=best_loc, fontsize=12, ncol=2,
+              framealpha=0.9, edgecolor='black')
+
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def _find_best_legend_location(marker_positions, obstacle_rects, x_min, x_max, y_min, y_max):
+    """
+    マーカーを避けて凡例の最適位置を決定する
+
+    Parameters
+    ----------
+    marker_positions : list
+        マーカー位置のリスト [(x, y), ...]
+    obstacle_rects : list
+        障害物のリスト
+    x_min, x_max, y_min, y_max : float
+        座標範囲
+
+    Returns
+    -------
+    str
+        matplotlibのloc文字列
+    """
+    # 凡例の候補位置とその座標範囲（相対的な位置）
+    # 位置名: (x_range_ratio, y_range_ratio) - 図の端からの相対位置
+    locations = {
+        'upper left': (0.0, 0.7, 0.3, 1.0),   # x: 0-30%, y: 70-100%
+        'upper right': (0.7, 1.0, 0.7, 1.0),  # x: 70-100%, y: 70-100%
+        'lower left': (0.0, 0.3, 0.0, 0.3),   # x: 0-30%, y: 0-30%
+        'lower right': (0.7, 1.0, 0.0, 0.3),  # x: 70-100%, y: 0-30%
+    }
+
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+
+    best_loc = 'upper left'
+    min_markers_in_region = float('inf')
+
+    for loc_name, (x_ratio_min, x_ratio_max, y_ratio_min, y_ratio_max) in locations.items():
+        region_x_min = x_min + x_range * x_ratio_min
+        region_x_max = x_min + x_range * x_ratio_max
+        region_y_min = y_min + y_range * y_ratio_min
+        region_y_max = y_min + y_range * y_ratio_max
+
+        # この領域内のマーカー数をカウント
+        count = 0
+        for mx, my in marker_positions:
+            if region_x_min <= mx <= region_x_max and region_y_min <= my <= region_y_max:
+                count += 1
+
+        if count < min_markers_in_region:
+            min_markers_in_region = count
+            best_loc = loc_name
+
+    return best_loc
 
 
 def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val,
@@ -248,7 +821,11 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                                            use_gpr_step_limit=False, max_gpr_steps=50,
                                            rho=2.0, alpha=1.0, beta=0.2, gamma=0.5,
                                            display_x_min=None, display_x_max=None,
-                                           display_y_min=None, display_y_max=None):
+                                           display_y_min=None, display_y_max=None,
+                                           unknown_penalty=1.0,
+                                           max_replan_count=10,
+                                           source_intensities=None,
+                                           softening=None):
     """
     未知環境でLiDARを使いながら複数ロボットが同時に動き、GPR探査を行う統合GIF
     動的タスク割り当てを使用
@@ -372,7 +949,8 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
             'replan_count': 0,
             'color': f'C{r}',
             'total_distance': 0.0,
-            'gpr_steps': 0
+            'gpr_steps': 0,
+            'trajectory': [pos]  # 経路履歴を追加
         })
         # 初期位置でLiDAR観測
         reveal_with_lidar(pos, global_discovered, true_grid, obstacle_rects, sensor_range)
@@ -448,8 +1026,8 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                 # ピーク
                 ax.scatter(
                     pred["peak_x"], pred["peak_y"],
-                    marker='x', s=150, linewidths=3,
-                    color=rs['color'], edgecolors='white', zorder=20
+                    marker='X', s=150, linewidths=2,
+                    color='magenta', edgecolors='white', zorder=20
                 )
 
                 # 測定領域
@@ -471,28 +1049,46 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
             for peak_data in completed_gpr_peaks:
                 peak_x, peak_y, robot_id, obs_id, is_ghost = peak_data[:5]
                 if is_ghost:
-                    # ゴースト: 元のタスク位置に表示（グレー + ×マーカー）
+                    # ゴースト: 元のタスク位置に表示（黒 + ×マーカー）
                     orig_x, orig_y = peak_data[5], peak_data[6]
-                    ax.scatter(orig_x, orig_y, marker='X', s=200,
-                               color='gray', edgecolors='white', linewidths=2,
-                               zorder=22, alpha=0.7)
-                    ax.text(orig_x + 0.8, orig_y + 0.8, f'Task{obs_id + 1}\n(Ghost)', fontsize=7,
-                            bbox=dict(boxstyle='round,pad=0.25', facecolor='lightgray',
-                                      edgecolor='gray', linewidth=1.5, alpha=0.85))
-                else:
-                    # 真の線源: GPRピーク位置に表示（ロボット色 + Pマーカー）
-                    ax.scatter(peak_x, peak_y, marker='P', s=180,
-                               color=f'C{robot_id}', edgecolors='white', linewidths=2,
+                    ax.scatter(orig_x, orig_y, marker='X', s=250,
+                               color='black', edgecolors='white', linewidths=2,
                                zorder=22, alpha=0.9)
-                    ax.text(peak_x + 0.8, peak_y + 0.8, f'Task{obs_id + 1}', fontsize=8,
-                            bbox=dict(boxstyle='round,pad=0.25', facecolor='white',
-                                      edgecolor=f'C{robot_id}', linewidth=1.5, alpha=0.85))
+                    ax.text(orig_x + 1.0, orig_y + 1.0, f'Task{obs_id + 1}\n(Ghost)', fontsize=10,
+                            fontweight='bold', zorder=35,
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgray',
+                                      edgecolor='black', linewidth=2, alpha=0.9))
+                else:
+                    # 真の線源: GPRピーク位置に表示（magenta + Pマーカー、少し小さく）
+                    ax.scatter(peak_x, peak_y, marker='P', s=160,
+                               color='magenta', edgecolors='white', linewidths=2,
+                               zorder=22, alpha=0.9)
+                    ax.text(peak_x + 1.0, peak_y + 1.0, f'Task{obs_id + 1}', fontsize=10,
+                            fontweight='bold', zorder=35,
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                      edgecolor='magenta', linewidth=2, alpha=0.9))
+
+        # 到達不能タスク（赤×で表示）
+        for task_id in unreachable_tasks:
+            gx, gy = task_positions_grid[task_id]
+            gx_disp, gy_disp = gx + 0.5, gy + 0.5
+            ax.scatter(gx_disp, gy_disp, marker='X', s=250,
+                       color='red', edgecolors='white', linewidths=2,
+                       zorder=21, alpha=0.9)
+            ax.text(gx_disp + 1.0, gy_disp + 1.0, f'Task{task_id + 1}\n(Unreachable)', fontsize=10,
+                    fontweight='bold', zorder=35,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='mistyrose',
+                              edgecolor='red', linewidth=2, alpha=0.9))
 
         # 観測点（未完了・進行中）
         completed_task_ids = set(peak_data[3] for peak_data in completed_gpr_peaks)
         in_progress_task_ids = set(rs['current_task_id'] for rs in robot_states if rs['current_task_id'] is not None)
 
         for task_id in range(num_tasks):
+            # 到達不能・障害物内タスクはスキップ（別途描画済み）
+            if task_id in unreachable_tasks or task_id in obstacle_tasks:
+                continue
+
             gx, gy = task_positions_grid[task_id]
             # セル中央に描画（+0.5オフセット）
             gx_disp, gy_disp = gx + 0.5, gy + 0.5
@@ -507,22 +1103,22 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                     if rs['current_task_id'] == task_id:
                         robot_color = rs['color']
                         break
-                ax.plot(gx_disp, gy_disp, 'o', color='orange', markersize=11,
+                ax.plot(gx_disp, gy_disp, 'o', color='orange', markersize=13,
                         markeredgecolor=robot_color if robot_color else 'k',
                         markeredgewidth=2, alpha=0.9, zorder=10)
-                ax.text(gx_disp, gy_disp - 1.4, f'Task{task_id + 1}', fontsize=8, ha='center',
-                        fontweight='bold',
-                        bbox=dict(boxstyle='round,pad=0.25', facecolor='orange',
+                ax.text(gx_disp, gy_disp - 1.6, f'Task{task_id + 1}', fontsize=10, ha='center',
+                        fontweight='bold', zorder=35,
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='orange',
                                   edgecolor=robot_color if robot_color else 'k',
-                                  linewidth=1.5, alpha=0.9))
+                                  linewidth=2, alpha=0.9))
             else:
                 # 未割り当てタスク
-                ax.plot(gx_disp, gy_disp, 'o', color='gold', markersize=11,
+                ax.plot(gx_disp, gy_disp, 'o', color='gold', markersize=13,
                         markeredgecolor='k', markeredgewidth=2, alpha=0.7, zorder=10)
-                ax.text(gx_disp, gy_disp - 1.4, f'Task{task_id + 1}', fontsize=8, ha='center',
-                        fontweight='bold',
-                        bbox=dict(boxstyle='round,pad=0.25', facecolor='gold',
-                                  edgecolor='k', linewidth=1.5, alpha=0.7))
+                ax.text(gx_disp, gy_disp - 1.6, f'Task{task_id + 1}', fontsize=10, ha='center',
+                        fontweight='bold', zorder=35,
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='gold',
+                                  edgecolor='k', linewidth=2, alpha=0.7))
 
         # ロボット描画
         for rs in robot_states:
@@ -573,23 +1169,23 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                     ys = [p[1] + 0.5 for p in remaining_path]
                     ax.plot(xs, ys, '--', color=rs['color'], alpha=0.6, linewidth=2.5, zorder=8)
 
-        # 真の線源
-        if sources_grid:
-            sx = [p[0] for p in sources_grid]
-            sy = [p[1] for p in sources_grid]
-            ax.scatter(sx, sy, marker='*', s=500, color='cyan',
-                       edgecolors='k', linewidths=3, zorder=35)
-            for i, (sx_i, sy_i) in enumerate(sources_grid):
-                ax.text(sx_i, sy_i - 1.8, f'Source{i + 1}', fontsize=10, ha='center',
-                        fontweight='bold', color='k',
-                        bbox=dict(boxstyle='round,pad=0.35', facecolor='cyan',
-                                  edgecolor='k', linewidth=2, alpha=0.95))
+        # 障害物内タスク（オレンジ×で表示）
+        for task_id in obstacle_tasks:
+            gx, gy = task_positions_grid[task_id]
+            gx_disp, gy_disp = gx + 0.5, gy + 0.5
+            ax.scatter(gx_disp, gy_disp, marker='X', s=250,
+                       color='darkorange', edgecolors='white', linewidths=2,
+                       zorder=21, alpha=0.9)
+            ax.text(gx_disp + 1.0, gy_disp + 1.0, f'Task{task_id + 1}\n(Obstacle)', fontsize=10,
+                    fontweight='bold', zorder=35,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='navajowhite',
+                              edgecolor='darkorange', linewidth=2, alpha=0.9))
 
         # タイトルとステータス（設定された表示範囲を使用）
         ax.set_xlim(disp_x_min, disp_x_max)
         ax.set_ylim(disp_y_min, disp_y_max)
-        ax.set_xlabel('x [m]', fontsize=12)
-        ax.set_ylabel('y [m]', fontsize=12)
+        ax.set_xlabel('x [m]', fontsize=15)
+        ax.set_ylabel('y [m]', fontsize=15)
         ax.set_title(frame_label, fontsize=14, fontweight='bold', pad=20)
 
         # 凡例
@@ -670,7 +1266,9 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                 # 既知情報で経路計画
                 known_grid = np.where(global_discovered, true_grid, 0).astype(int)
                 try:
-                    dstar = DStarLite(known_grid, rs['position'], goal)
+                    dstar = DStarLite(known_grid, rs['position'], goal,
+                                      discovered_grid=global_discovered,
+                                      unknown_penalty=unknown_penalty)
                     dstar.compute_shortest_path()
                     path = dstar.extract_path()
                 except:
@@ -725,17 +1323,11 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                             continue
 
                         rs['replan_count'] += 1
-                        if rs['replan_count'] > 10:
+                        if rs['replan_count'] > max_replan_count:
                             tid = rs['current_task_id']
                             if tid is not None:
-                                task_fail_count[tid] += 1
-                                if task_fail_count[tid] >= MAX_TASK_FAIL_COUNT:
-                                    print(f"  Robot {rs['id']}: Too many replans, marking Task{tid + 1} as UNREACHABLE")
-                                    unreachable_tasks.add(tid)
-                                    unassigned_tasks.discard(tid)
-                                else:
-                                    print(f"  Robot {rs['id']}: Too many replans, skipping Task{tid + 1} (fail {task_fail_count[tid]}/{MAX_TASK_FAIL_COUNT})")
-                                    unassigned_tasks.add(tid)
+                                print(f"  Robot {rs['id']}: Too many replans, putting Task{tid + 1} back to queue")
+                                unassigned_tasks.add(tid)
                             rs['current_task_id'] = None
                             rs['current_goal'] = None
                             rs['state'] = 'IDLE'
@@ -746,7 +1338,9 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                         goal = rs['move_target'][1]
                         known_grid = np.where(global_discovered, true_grid, 0).astype(int)
                         try:
-                            dstar = DStarLite(known_grid, rs['position'], goal)
+                            dstar = DStarLite(known_grid, rs['position'], goal,
+                                              discovered_grid=global_discovered,
+                                              unknown_penalty=unknown_penalty)
                             dstar.compute_shortest_path()
                             new_path = dstar.extract_path()
                         except:
@@ -777,6 +1371,8 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                         rs['path_idx'] += 1
                         # 移動距離を加算（1セル移動 = 1.0）
                         rs['total_distance'] += np.sqrt((next_pos[0] - old_pos[0])**2 + (next_pos[1] - old_pos[1])**2)
+                        # 軌跡を記録
+                        rs['trajectory'].append(next_pos)
                         reveal_with_lidar(rs['position'], global_discovered, true_grid,
                                           obstacle_rects, sensor_range)
 
@@ -807,15 +1403,41 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                 cx, cy = rs['gpr_center']
 
                 # 測定対象セルリストを作成（初回のみ）
+                # Coverage path (Boustrophedon/蛇行パターン) で探査
                 if not rs['gpr_measuring']:
                     targets = []
-                    for dx in range(-search_radius, search_radius + 1):
-                        for dy in range(-search_radius, search_radius + 1):
-                            tx, ty = cx + dx, cy + dy
+                    # ロボットの現在位置から開始方向を決定
+                    rx, ry = rs['position']
+
+                    # Y方向の走査順序を決定（ロボットに近い側から開始）
+                    if ry <= cy:
+                        # ロボットが中心より下または同じ → 下から上へ
+                        y_range = range(-search_radius, search_radius + 1)
+                    else:
+                        # ロボットが中心より上 → 上から下へ
+                        y_range = range(search_radius, -search_radius - 1, -1)
+
+                    for row_idx, dy in enumerate(y_range):
+                        ty = cy + dy
+
+                        # X方向は行ごとに交互（蛇行パターン）
+                        # 最初の行はロボットに近い側から開始
+                        if row_idx == 0:
+                            start_left = (rx <= cx)
+                        else:
+                            start_left = not start_left  # 前の行と逆方向
+
+                        if start_left:
+                            x_range = range(-search_radius, search_radius + 1)
+                        else:
+                            x_range = range(search_radius, -search_radius - 1, -1)
+
+                        for dx in x_range:
+                            tx = cx + dx
                             if 0 <= tx < W and 0 <= ty < H:
                                 if true_grid[ty, tx] == 1:
                                     continue
-                                if (tx, ty) not in rs['gpr_cumulative']:
+                                if (tx + 0.5, ty + 0.5) not in rs['gpr_cumulative']:
                                     targets.append((tx, ty))
 
                     rs['gpr_targets'] = targets
@@ -846,6 +1468,8 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                             # 移動距離を加算（1セル移動 = 1.0）
                             rs['total_distance'] += np.sqrt((next_pos[0] - old_pos[0])**2 + (next_pos[1] - old_pos[1])**2)
                             rs['gpr_steps'] += 1  # GPR探査ステップ数をインクリメント
+                            # 軌跡を記録
+                            rs['trajectory'].append(next_pos)
                             reveal_with_lidar(rs['position'], global_discovered, true_grid,
                                               obstacle_rects, sensor_range)
                         else:
@@ -867,9 +1491,18 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                                 if rs['gpr_pred']:
                                     # GPR推定強度と実際の強度を取得
                                     estimated_intensity = rs['gpr_pred']['peak_val']
-                                    peak_gx = int(np.clip(np.round(rs['gpr_pred']['peak_x']), 0, W-1))
-                                    peak_gy = int(np.clip(np.round(rs['gpr_pred']['peak_y']), 0, H-1))
-                                    actual_intensity = float(sim_observed_counts[peak_gy, peak_gx]) if sim_observed_counts is not None else 0.0
+                                    peak_x = rs['gpr_pred']['peak_x']
+                                    peak_y = rs['gpr_pred']['peak_y']
+                                    # GPR推定ピーク位置での実際の強度を計算
+                                    if source_intensities is not None:
+                                        actual_intensity = calculate_intensity_at_point(
+                                            (peak_x, peak_y), sources_grid, source_intensities,
+                                            obstacles=obstacle_rects, softening=softening
+                                        )
+                                    else:
+                                        peak_gx = int(np.clip(np.round(peak_x), 0, W-1))
+                                        peak_gy = int(np.clip(np.round(peak_y), 0, H-1))
+                                        actual_intensity = float(sim_observed_counts[peak_gy, peak_gx]) if sim_observed_counts is not None else 0.0
                                     completed_gpr_peaks.append((
                                         rs['gpr_pred']['peak_x'],
                                         rs['gpr_pred']['peak_y'],
@@ -896,8 +1529,17 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                                 rs['gpr_measuring'] = False
                                 continue
                     else:
-                        val = float(sim_observed_counts[ty, tx]) if sim_observed_counts is not None else 0.0
-                        rs['gpr_cumulative'][(tx, ty)] = val
+                        # 測定位置での放射線強度を計算（セル中心座標を使用）
+                        if source_intensities is not None:
+                            measurement_pos = (tx + 0.5, ty + 0.5)
+                            val = calculate_intensity_at_point(
+                                measurement_pos, sources_grid, source_intensities,
+                                obstacles=obstacle_rects, softening=softening
+                            )
+                        else:
+                            # フォールバック: 事前計算グリッドを使用
+                            val = float(sim_observed_counts[ty, tx]) if sim_observed_counts is not None else 0.0
+                        rs['gpr_cumulative'][(tx + 0.5, ty + 0.5)] = val
                         rs['gpr_target_idx'] += 1
                 else:
                     # 全セル測定完了
@@ -905,18 +1547,52 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                     rs['gpr_pred'] = fit_gpr_for_robot(rs)
                     rs['gpr_iter'] += 1
 
-                    if rs['gpr_iter'] >= max_gpr_iters or len(rs['gpr_targets']) == 0:
+                    # [DEBUG] GPR反復情報
+                    cx, cy = rs['gpr_center']
+                    if rs['gpr_pred']:
+                        peak_x = rs['gpr_pred']['peak_x']
+                        peak_y = rs['gpr_pred']['peak_y']
+                        new_cx = int(peak_x)  # floor: ピークが含まれるセル
+                        new_cy = int(peak_y)
+                        print(f"  [DEBUG] Robot {rs['id']}: GPR iter={rs['gpr_iter']}, "
+                              f"center=({cx}, {cy}), peak=({peak_x:.2f}, {peak_y:.2f}), "
+                              f"floor(peak)=({new_cx}, {new_cy}), "
+                              f"len(gpr_targets)={len(rs['gpr_targets'])}, "
+                              f"len(gpr_cumulative)={len(rs['gpr_cumulative'])}")
+                    else:
+                        print(f"  [DEBUG] Robot {rs['id']}: GPR iter={rs['gpr_iter']}, "
+                              f"center=({cx}, {cy}), gpr_pred=None, "
+                              f"len(gpr_targets)={len(rs['gpr_targets'])}")
+
+                    # 終了条件判定
+                    terminate_reason = None
+                    if rs['gpr_iter'] >= max_gpr_iters:
+                        terminate_reason = f"MAX_ITER_REACHED (iter={rs['gpr_iter']} >= {max_gpr_iters})"
+                    elif len(rs['gpr_targets']) == 0:
+                        terminate_reason = "NO_NEW_TARGETS (len(gpr_targets)==0)"
+
+                    if terminate_reason:
+                        print(f"  [DEBUG] Robot {rs['id']}: TERMINATING - {terminate_reason}")
                         obs_id = rs['current_task_id']
                         is_ghost = False  # 正常完了 = 真の線源
                         if rs['gpr_pred']:
                             # GPR推定強度と実際の強度を取得
                             estimated_intensity = rs['gpr_pred']['peak_val']
-                            peak_gx = int(np.clip(np.round(rs['gpr_pred']['peak_x']), 0, W-1))
-                            peak_gy = int(np.clip(np.round(rs['gpr_pred']['peak_y']), 0, H-1))
-                            actual_intensity = float(sim_observed_counts[peak_gy, peak_gx]) if sim_observed_counts is not None else 0.0
+                            peak_x = rs['gpr_pred']['peak_x']
+                            peak_y = rs['gpr_pred']['peak_y']
+                            # GPR推定ピーク位置での実際の強度を計算
+                            if source_intensities is not None:
+                                actual_intensity = calculate_intensity_at_point(
+                                    (peak_x, peak_y), sources_grid, source_intensities,
+                                    obstacles=obstacle_rects, softening=softening
+                                )
+                            else:
+                                peak_gx = int(np.clip(np.round(peak_x), 0, W-1))
+                                peak_gy = int(np.clip(np.round(peak_y), 0, H-1))
+                                actual_intensity = float(sim_observed_counts[peak_gy, peak_gx]) if sim_observed_counts is not None else 0.0
                             completed_gpr_peaks.append((
-                                rs['gpr_pred']['peak_x'],
-                                rs['gpr_pred']['peak_y'],
+                                peak_x,
+                                peak_y,
                                 rs['id'],
                                 obs_id,
                                 is_ghost,
@@ -937,14 +1613,21 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
                         rs['gpr_target_idx'] = 0
                     else:
                         if rs['gpr_pred']:
-                            new_cx = int(np.round(rs['gpr_pred']['peak_x']))
-                            new_cy = int(np.round(rs['gpr_pred']['peak_y']))
+                            peak_x = rs['gpr_pred']['peak_x']
+                            peak_y = rs['gpr_pred']['peak_y']
+                            new_cx = int(peak_x)  # floor: ピークが含まれるセル
+                            new_cy = int(peak_y)
                             if (new_cx, new_cy) != rs['gpr_center']:
                                 if 0 <= new_cx < W and 0 <= new_cy < H and true_grid[new_cy, new_cx] == 0:
+                                    print(f"  [DEBUG] Robot {rs['id']}: MOVING CENTER from ({cx}, {cy}) to ({new_cx}, {new_cy})")
                                     rs['gpr_center'] = (new_cx, new_cy)
                                     rs['gpr_targets'] = []
                                     rs['gpr_target_idx'] = 0
                                     rs['gpr_measuring'] = False
+                                else:
+                                    print(f"  [DEBUG] Robot {rs['id']}: NEW CENTER INVALID - ({new_cx}, {new_cy}) is obstacle or out of bounds")
+                            else:
+                                print(f"  [DEBUG] Robot {rs['id']}: CENTER UNCHANGED - floor(peak)=({new_cx}, {new_cy}) == center=({cx}, {cy})")
 
         # フレーム生成
         if step % 1 == 0 or not any_active:
@@ -981,11 +1664,22 @@ def create_integrated_gif_with_unknown_env(robot_start_grid, peaks_xy, peaks_val
         print(f"  {len(unreachable_tasks)} tasks: {unreachable_names}")
 
     # ゴースト統計を表示
-    # タプル構造: TRUE SOURCE=5要素, GHOST=7要素（両方とも5番目がis_ghost）
+    # タプル構造: TRUE SOURCE=7要素, GHOST=9要素（両方とも5番目がis_ghost）
     num_ghosts = sum(1 for peak_data in completed_gpr_peaks if peak_data[4])
     num_true_sources = len(completed_gpr_peaks) - num_ghosts
     print(f"\n=== Ghost detection result ===")
     print(f"  True sources detected: {num_true_sources}")
     print(f"  Ghosts detected: {num_ghosts}")
 
-    return overall_frames, completed_gpr_peaks, robot_distances, task_assignment_log
+    # 各ロボットの軌跡を収集
+    robot_trajectories = {rs['id']: rs['trajectory'] for rs in robot_states}
+
+    # 追加データを辞書で返す
+    extra_data = {
+        'unreachable_tasks': unreachable_tasks,
+        'obstacle_tasks': obstacle_tasks,
+        'task_positions_grid': task_positions_grid,
+        'robot_trajectories': robot_trajectories
+    }
+
+    return overall_frames, completed_gpr_peaks, robot_distances, task_assignment_log, extra_data

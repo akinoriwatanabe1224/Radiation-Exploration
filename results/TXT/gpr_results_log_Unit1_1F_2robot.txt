@@ -1,0 +1,120 @@
+======================================================================
+Multi-Robot GPR Exploration with Unknown Environment - Results Log
+======================================================================
+
+Experiment Version: Unit1_1F_2robot
+Number of Robots: 2
+Grid Size: 50 x 50
+LiDAR Sensor Range: 5 cells
+Search Radius: 1 (measurement area: 3x3)
+Max GPR Iterations: 8
+GPR Step Limit: Enabled
+Max GPR Steps: 30
+
+----------------------------------------------------------------------
+ROBOT TRAVEL DISTANCES
+----------------------------------------------------------------------
+Robot 0: 337.00 cells
+Robot 1: 249.00 cells
+
+Total distance (all robots): 586.00 cells
+
+----------------------------------------------------------------------
+TRUE SOURCE POSITIONS AND INTENSITIES
+----------------------------------------------------------------------
+Source 1:
+  Grid: (8.5, 40.5)
+  World: (8.50, 40.50)
+  Intensity: 1.00e+06
+
+Source 2:
+  Grid: (18.5, 40.5)
+  World: (18.50, 40.50)
+  Intensity: 1.00e+06
+
+Source 3:
+  Grid: (35.5, 34.5)
+  World: (35.50, 34.50)
+  Intensity: 1.00e+06
+
+Source 4:
+  Grid: (39.5, 25.5)
+  World: (39.50, 25.50)
+  Intensity: 1.00e+06
+
+----------------------------------------------------------------------
+GHOST DETECTION SUMMARY
+----------------------------------------------------------------------
+Total peaks detected: 5
+  True sources: 5
+  Ghosts: 0
+
+----------------------------------------------------------------------
+DETECTED TRUE SOURCES
+----------------------------------------------------------------------
+True Peak 1 (Task6, Robot 0):
+  Grid: (8.424, 40.485)
+  World: (8.424, 40.485)
+  GPR Estimated Intensity: 2.10e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Peak 2 (Task7, Robot 0):
+  Grid: (18.424, 40.586)
+  World: (18.424, 40.586)
+  GPR Estimated Intensity: 2.15e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Peak 3 (Task5, Robot 1):
+  Grid: (35.576, 34.545)
+  World: (35.576, 34.545)
+  GPR Estimated Intensity: 2.06e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Peak 4 (Task4, Robot 0):
+  Grid: (39.424, 25.576)
+  World: (39.424, 25.576)
+  GPR Estimated Intensity: 2.12e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Peak 5 (Task2, Robot 0):
+  Grid: (14.030, 24.788)
+  World: (14.030, 24.788)
+  GPR Estimated Intensity: 1.70e+02
+  Actual Intensity at Peak: 1.68e+02
+
+----------------------------------------------------------------------
+DETECTED GHOSTS
+----------------------------------------------------------------------
+No ghosts detected.
+
+----------------------------------------------------------------------
+COMPARISON WITH TRUE SOURCES (excluding ghosts)
+----------------------------------------------------------------------
+True Source 1 at (8.5, 40.5) [grid], (8.50, 40.50) [world], intensity=1.00e+06:
+  Closest detected peak: (8.424, 40.485) [grid], (8.424, 40.485) [world]
+  Distance: 0.077 (grid)
+  Detected by: Robot 0, Task6
+  GPR Estimated Intensity: 2.10e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Source 2 at (18.5, 40.5) [grid], (18.50, 40.50) [world], intensity=1.00e+06:
+  Closest detected peak: (18.424, 40.586) [grid], (18.424, 40.586) [world]
+  Distance: 0.115 (grid)
+  Detected by: Robot 0, Task7
+  GPR Estimated Intensity: 2.15e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Source 3 at (35.5, 34.5) [grid], (35.50, 34.50) [world], intensity=1.00e+06:
+  Closest detected peak: (35.576, 34.545) [grid], (35.576, 34.545) [world]
+  Distance: 0.088 (grid)
+  Detected by: Robot 1, Task5
+  GPR Estimated Intensity: 2.06e+05
+  Actual Intensity at Peak: 1.60e+05
+
+True Source 4 at (39.5, 25.5) [grid], (39.50, 25.50) [world], intensity=1.00e+06:
+  Closest detected peak: (39.424, 25.576) [grid], (39.424, 25.576) [world]
+  Distance: 0.107 (grid)
+  Detected by: Robot 0, Task4
+  GPR Estimated Intensity: 2.12e+05
+  Actual Intensity at Peak: 1.60e+05
+

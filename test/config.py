@@ -11,10 +11,9 @@ np.random.seed(0)
 # ---------------------------
 #  線源・測定点の設定（グリッド座標系: 0〜49）
 # ---------------------------
-sources = np.array([[9.5, 17.5], [13.5, 34.5], [27.5, 19.5]])   # 真の線源位置（グリッド座標）
-# 各線源の放射能強度（sources と同じ順序で指定）
-source_intensities = np.array([1e6, 1e6, 1e6])  # 各線源の強度
-measurements = np.array([[33.5, 31.5], [44.5, 34.5], [33.5, 23.5], [44.5, 18.5]])  # 測定点（グリッド座標）
+sources = np.array([[9.2, 40.3], [19.4, 40.6], [35.3, 34.1], [39.0, 25.5]])   # 真の線源位置（グリッド座標）
+source_intensities = np.array([1e6, 1e6, 1e6, 1e6])  # 各線源の強度
+measurements = np.array([[15.5, 13.5], [6.5, 20.5], [9.5, 10.5], [20.5, 13.5]])  # 測定点（グリッド座標）
 
 # ---------------------------
 #  座標範囲（グリッドインデックス範囲）
@@ -36,7 +35,7 @@ kappa = 800  # von Mises 集中度
 #  ヒートマップピーク検出
 # ---------------------------
 peak_local_size = 5
-peak_threshold_ratio = 0.55
+peak_threshold_ratio = 0.5
 
 # ---------------------------
 #  グリッドサイズ
@@ -58,7 +57,7 @@ PARENT_DIR = os.path.dirname(TEST_DIR)
 # 使用するマップCSVのパス（任意のパスを指定可能）
 # 例: TESTMAP_CSV_PATH = os.path.join(PARENT_DIR, "maps", "TestMAP3.csv")
 # 例: TESTMAP_CSV_PATH = "G:/マイドライブ/大学/研究/00_program_main/maps/custom_map.csv"
-TESTMAP_CSV_PATH = os.path.join(PARENT_DIR, "maps", "Unit1_1F.csv")
+TESTMAP_CSV_PATH = os.path.join(PARENT_DIR, "maps", "Unit1_1F_ver2.csv")
 
 # CSVファイルが見つからない場合のデフォルト障害物
 DEFAULT_OBSTACLES = [

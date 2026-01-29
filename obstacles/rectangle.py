@@ -29,7 +29,7 @@ class RectangleObstacle:
         self.color = color
         self.alpha = alpha
 
-    def draw(self, ax, zorder=5):
+    def draw(self, ax, zorder=5, edgecolor='none'):
         """
         matplotlib の Axes に障害物を描画する
 
@@ -39,11 +39,14 @@ class RectangleObstacle:
             描画対象の Axes
         zorder : int
             描画順序
+        edgecolor : str
+            境界線の色（'none'で境界線なし）
         """
         ax.fill(
             [self.x0, self.x1, self.x1, self.x0],
             [self.y0, self.y0, self.y1, self.y1],
-            color=self.color, alpha=self.alpha, zorder=zorder
+            color=self.color, alpha=self.alpha, zorder=zorder,
+            edgecolor=edgecolor
         )
 
     def get_intersections(self, p1, p2):
